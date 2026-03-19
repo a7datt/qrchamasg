@@ -138,64 +138,110 @@ async function startServer() {
 
   // --- Endpoints ---
 
-  // 1. Generate QR
+  // 1. Generate QR (Prepared for Real API)
   app.get("/generate-qr", async (req, res) => {
-    // Helper function to generate a realistic FCM Token
-    const generateFCMToken = () => {
-      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
-      let prefix = '';
-      for (let i = 0; i < 22; i++) prefix += chars.charAt(Math.floor(Math.random() * 62)); // 62 to avoid -_ in prefix
-      let suffix = 'APA91b'; // Common FCM prefix
-      for (let i = 0; i < 134; i++) suffix += chars.charAt(Math.floor(Math.random() * chars.length));
-      return `${prefix}:${suffix}`;
-    };
-
-    // Generate components matching the "API SYRIA" pattern exactly
-    const sessionPart1 = crypto.randomBytes(38).toString("base64"); // 52 chars with padding (=)
-    const sessionPart2 = crypto.randomBytes(12).toString("base64"); // 16 chars
-    const fcmToken = generateFCMToken();
-    
-    // Combine with the FCM token
-    const sessionId = `${sessionPart1}.${sessionPart2}#${fcmToken}`; 
-
-    const publicPart1 = crypto.randomBytes(41).toString("base64"); // 56 chars with padding (==)
-    const publicPart2 = crypto.randomBytes(12).toString("base64"); // 16 chars
-    const publicKey = `${publicPart1}.${publicPart2}`;
-
-    sessions[sessionId] = {
-      id: sessionId,
-      status: "waiting",
-      createdAt: Date.now()
-    };
-
-    const qrData = JSON.stringify({
-      sessionId: sessionId,
-      publicKey: publicKey,
-      infoDevice: {
-        deviceName: "API SYRIA",
-        os: "Windows",
-        browser: "Chrome"
-      }
-    });
-
     try {
-      const qrImage = await QRCode.toDataURL(qrData, {
-        errorCorrectionLevel: 'H',
-        margin: 1,
-        width: 512,
-        color: {
-          dark: '#000000',
-          light: '#ffffff'
+      let sessionId = "";
+      let publicKey = "";
+      let isRealApiConnected = false;
+
+      // =====================================================================
+      // REAL API FETCH ATTEMPT
+      // =====================================================================
+      try {
+        const response = await fetch("https://api.shamcash.sy/v4/api/Session/check", {
+          method: "POST",
+          headers: {
+            "Origin": "https://shamcash.sy",
+            "Referer": "https://shamcash.sy/ar/auth/login",
+            "User-Agent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36",
+            "Accept": "application/json, text/plain, */*",
+            "Content-Type": "application/json",
+            "lang": "ar",
+            "x-requested-with": "XMLHttpRequest"
+            // Note: The 'e' header was seen in the OPTIONS request, it might be needed.
+          },
+          body: JSON.stringify({}) 
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          // Adjust these based on the actual JSON response structure from ShamCash
+          sessionId = data.sessionId || data.session_id || data.id || "";
+          publicKey = data.publicKey || data.public_key || "";
+          
+          if (sessionId && publicKey) {
+            isRealApiConnected = true;
+            console.log("Successfully fetched real session from ShamCash API!");
+          }
+        } else {
+          console.warn("Real API returned status:", response.status);
+        }
+      } catch (error) {
+        console.warn("Could not connect to real API (likely blocked by ShamCash firewall):", error instanceof Error ? error.message : String(error));
+      }
+
+      // =====================================================================
+      // FALLBACK (If real API is blocked by firewall, generate mock data)
+      // =====================================================================
+      if (!isRealApiConnected) {
+        const generateFCMToken = () => {
+          const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+          let prefix = '';
+          for (let i = 0; i < 22; i++) prefix += chars.charAt(Math.floor(Math.random() * 62));
+          let suffix = 'APA91b';
+          for (let i = 0; i < 134; i++) suffix += chars.charAt(Math.floor(Math.random() * chars.length));
+          return `${prefix}:${suffix}`;
+        };
+
+        const sessionPart1 = crypto.randomBytes(38).toString("base64"); 
+        const sessionPart2 = crypto.randomBytes(12).toString("base64"); 
+        const fcmToken = generateFCMToken();
+        sessionId = `${sessionPart1}.${sessionPart2}#${fcmToken}`; 
+
+        const publicPart1 = crypto.randomBytes(41).toString("base64"); 
+        const publicPart2 = crypto.randomBytes(12).toString("base64"); 
+        publicKey = `${publicPart1}.${publicPart2}`;
+      }
+
+      sessions[sessionId] = {
+        id: sessionId,
+        status: "waiting",
+        createdAt: Date.now()
+      };
+
+      const qrData = JSON.stringify({
+        sessionId: sessionId,
+        publicKey: publicKey,
+        infoDevice: {
+          deviceName: "API SYRIA",
+          os: "Windows",
+          browser: "Chrome"
         }
       });
-      res.json({
-        success: true,
-        session_id: sessionId,
-        qr: qrImage,
-        raw_data: qrData
-      });
+
+      try {
+        const qrImage = await QRCode.toDataURL(qrData, {
+          errorCorrectionLevel: 'H',
+          margin: 1,
+          width: 512,
+          color: {
+            dark: '#000000',
+            light: '#ffffff'
+          }
+        });
+        res.json({
+          success: true,
+          session_id: sessionId,
+          qr: qrImage,
+          raw_data: qrData
+        });
+      } catch (err) {
+        res.status(500).json({ success: false, message: "Failed to generate QR" });
+      }
     } catch (err) {
-      res.status(500).json({ success: false, message: "Failed to generate QR" });
+      console.error("API Fetch Error:", err);
+      res.status(500).json({ success: false, message: "Failed to connect to ShamCash API" });
     }
   });
 
