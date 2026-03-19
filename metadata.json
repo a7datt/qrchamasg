@@ -1,0 +1,5 @@
+{
+  "name": "ShamCash API Bridge",
+  "description": "A read-only API bridge for ShamCash with QR-based session linking.",
+  "requestFramePermissions": []
+}

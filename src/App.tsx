@@ -1,0 +1,394 @@
+import React, { useState, useEffect } from 'react';
+import { QrCode, CheckCircle2, Loader2, ShieldCheck, Database, Activity, Wallet, ArrowDownLeft, ArrowUpRight, RefreshCw, Copy } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+
+export default function App() {
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [qrCode, setQrCode] = useState<string | null>(null);
+  const [status, setStatus] = useState<'idle' | 'waiting' | 'linked'>('idle');
+  const [accountAddress, setAccountAddress] = useState<string | null>(null);
+  const [apiKey, setApiKey] = useState<string | null>(localStorage.getItem('sham_api_key'));
+  const [loading, setLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
+  
+  // Test Data States
+  const [testResult, setTestResult] = useState<any>(null);
+  const [testLoading, setTestLoading] = useState(false);
+
+  const generateQR = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/generate-qr');
+      const data = await res.json();
+      if (data.success) {
+        setSessionId(data.session_id);
+        setQrCode(data.qr);
+        setStatus('waiting');
+      }
+    } catch (err) {
+      console.error('Failed to generate QR', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    let interval: any;
+    if (status === 'waiting' && sessionId) {
+      interval = setInterval(async () => {
+        try {
+          const res = await fetch(`/session-status?session_id=${encodeURIComponent(sessionId)}`);
+          const data = await res.json();
+          if (data.status === 'linked') {
+            setStatus('linked');
+            setAccountAddress(data.account_address);
+            if (data.api_key) {
+              setApiKey(data.api_key);
+              localStorage.setItem('sham_api_key', data.api_key);
+            }
+            clearInterval(interval);
+          }
+        } catch (err) {
+          console.error('Polling error', err);
+        }
+      }, 3000);
+    }
+    return () => clearInterval(interval);
+  }, [status, sessionId]);
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const fetchTestData = async (action: string, type?: string) => {
+    if (!apiKey) return;
+    setTestLoading(true);
+    setTestResult(null);
+    try {
+      let url = `/api?resource=shamcash&action=${action}`;
+      if (type) url += `&type=${type}`;
+      
+      const res = await fetch(url, {
+        headers: { 'X-Api-Key': apiKey }
+      });
+      const data = await res.json();
+      setTestResult({ action, type, data: data.data });
+    } catch (err) {
+      console.error('Test fetch error', err);
+    } finally {
+      setTestLoading(false);
+    }
+  };
+
+  const simulateScan = async () => {
+    if (!sessionId) return;
+    try {
+      await fetch('/link-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: sessionId,
+          account_address: "251a" + Math.random().toString(16).slice(2, 10),
+          cookies: "mock_cookie_data",
+          accessToken: "mock_token",
+          headers: { "User-Agent": "ShamCash-Mock" }
+        })
+      });
+    } catch (err) {
+      console.error('Simulation error', err);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-[#0a0a0a] text-zinc-100 font-sans selection:bg-emerald-500/30" dir="rtl">
+      {/* Background decoration */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-emerald-500/10 blur-[120px] rounded-full" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-blue-500/10 blur-[120px] rounded-full" />
+      </div>
+
+      <main className="relative z-10 max-w-6xl mx-auto px-6 py-12">
+        {/* Header */}
+        <header className="flex flex-col md:flex-row items-center justify-between mb-16 gap-6">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-emerald-500 rounded-xl flex items-center justify-center shadow-lg shadow-emerald-500/20">
+              <ShieldCheck className="text-black w-6 h-6" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight">جسر شام كاش</h1>
+              <p className="text-xs text-zinc-500 font-mono uppercase tracking-widest">بوابة API للقراءة فقط | SyriaBit</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-6 text-sm font-medium text-zinc-400">
+            <div className="flex flex-col items-end">
+              <span className="text-emerald-500 font-bold">النظام متصل</span>
+              <span className="text-[10px] opacity-50 uppercase tracking-tighter">System Online</span>
+            </div>
+            <div className="h-8 w-px bg-zinc-800" />
+            <div className="flex flex-col items-end">
+              <span className="text-zinc-200 font-bold">شركة Syriabit</span>
+              <span className="text-[10px] opacity-50 uppercase tracking-tighter">المطور: أحمد عتون | 0982559890</span>
+            </div>
+          </div>
+        </header>
+
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          {/* Left Column: QR Linking */}
+          <div className="lg:col-span-4">
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-zinc-900/50 border border-zinc-800 rounded-3xl p-6 backdrop-blur-xl sticky top-8"
+            >
+              <h2 className="text-xl font-semibold mb-2">ربط الحساب | Connect Account</h2>
+              <p className="text-zinc-400 text-xs mb-6">امسح رمز QR باستخدام تطبيق شام كاش للمصادقة.</p>
+
+              <div className="aspect-square bg-zinc-950 rounded-2xl border border-zinc-800 flex flex-col items-center justify-center relative overflow-hidden group">
+                <AnimatePresence mode="wait">
+                  {status === 'idle' && (
+                    <motion.button
+                      key="idle"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      onClick={generateQR}
+                      disabled={loading}
+                      className="flex flex-col items-center gap-4 group"
+                    >
+                      <div className="w-14 h-14 bg-zinc-900 rounded-2xl flex items-center justify-center group-hover:bg-emerald-500/10 group-hover:text-emerald-400 transition-all duration-300">
+                        {loading ? <Loader2 className="w-7 h-7 animate-spin" /> : <QrCode className="w-7 h-7" />}
+                      </div>
+                      <span className="text-xs font-medium text-zinc-400 group-hover:text-zinc-200">توليد الرمز | Generate QR</span>
+                    </motion.button>
+                  )}
+
+                  {status === 'waiting' && qrCode && (
+                    <motion.div
+                      key="waiting"
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      className="flex flex-col items-center gap-4 w-full p-4"
+                    >
+                      <div className="bg-white p-3 rounded-2xl shadow-2xl">
+                        <img src={qrCode} alt="QR Code" className="w-64 h-64" />
+                      </div>
+                      <div className="flex items-center gap-2 text-emerald-400 text-[10px] font-bold uppercase tracking-widest">
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        بانتظار المسح | Waiting for scan
+                      </div>
+                      
+                      <button 
+                        onClick={simulateScan}
+                        className="text-[9px] text-zinc-600 hover:text-zinc-400 underline uppercase tracking-tighter"
+                      >
+                        محاكاة المسح | Simulate Scan
+                      </button>
+                    </motion.div>
+                  )}
+
+                  {status === 'linked' && (
+                    <motion.div
+                      key="linked"
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      className="flex flex-col items-center gap-4 text-center"
+                    >
+                      <div className="w-16 h-16 bg-emerald-500/10 rounded-full flex items-center justify-center mb-1">
+                        <CheckCircle2 className="w-8 h-8 text-emerald-500" />
+                      </div>
+                      <h3 className="text-lg font-bold text-emerald-400">تم الربط بنجاح | Linked</h3>
+                      <p className="text-xs text-zinc-400 font-mono bg-zinc-900 px-3 py-1 rounded-full border border-zinc-800">
+                        {accountAddress}
+                      </p>
+                      <button 
+                        onClick={() => { setStatus('idle'); setQrCode(null); }}
+                        className="mt-2 text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+                      >
+                        ربط جديد | Link New
+                      </button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </motion.div>
+          </div>
+
+          {/* Right Column: API Info & Test Buttons */}
+          <div className="lg:col-span-8 space-y-6">
+            <AnimatePresence>
+              {apiKey && (
+                <motion.section
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  className="bg-emerald-500/10 border border-emerald-500/20 rounded-3xl p-6"
+                >
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <ShieldCheck className="text-emerald-500 w-5 h-5" />
+                      <h3 className="font-bold">مفتاح API الخاص بك | Your API Key</h3>
+                    </div>
+                    <button 
+                      onClick={() => { localStorage.removeItem('sham_api_key'); setApiKey(null); }}
+                      className="text-[10px] text-zinc-500 hover:text-red-400 uppercase font-bold"
+                    >
+                      مسح المفتاح | Clear Key
+                    </button>
+                  </div>
+                  
+                  <div className="bg-black/60 rounded-xl p-4 font-mono text-sm border border-zinc-800 flex items-center justify-between">
+                    <span className="text-emerald-400 truncate ml-4" dir="ltr">{apiKey}</span>
+                    <button 
+                      onClick={() => copyToClipboard(apiKey)}
+                      className="shrink-0 p-2 hover:bg-zinc-800 rounded-lg transition-all text-zinc-400 hover:text-emerald-400"
+                    >
+                      {copied ? <CheckCircle2 className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                    </button>
+                  </div>
+
+                  <div className="mt-4 p-4 bg-zinc-900/50 rounded-xl border border-zinc-800">
+                    <p className="text-xs text-zinc-500 mb-2 font-bold uppercase">رابط الربط | Linking URL</p>
+                    <div className="flex items-center justify-between gap-4">
+                      <code className="text-[11px] text-zinc-300 truncate" dir="ltr">{window.location.origin}/api</code>
+                      <button 
+                        onClick={() => copyToClipboard(`${window.location.origin}/api`)}
+                        className="shrink-0 text-[10px] text-emerald-500 hover:underline"
+                      >
+                        نسخ | Copy
+                      </button>
+                    </div>
+                  </div>
+                </motion.section>
+              )}
+            </AnimatePresence>
+
+            {/* Verification Tools */}
+            {apiKey && (
+              <section className="bg-zinc-900/30 border border-zinc-800 rounded-3xl p-6">
+                <h3 className="text-sm font-bold mb-6 flex items-center gap-2">
+                  <Activity className="w-4 h-4 text-blue-400" /> أدوات التحقق | Verification Tools
+                </h3>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+                  <button 
+                    onClick={() => fetchTestData('balance')}
+                    disabled={testLoading}
+                    className="flex items-center justify-center gap-2 bg-zinc-800 hover:bg-zinc-700 p-3 rounded-xl text-xs font-medium transition-all disabled:opacity-50"
+                  >
+                    <Wallet className="w-4 h-4 text-emerald-400" />
+                    فحص الرصيد | Balance
+                  </button>
+                  <button 
+                    onClick={() => fetchTestData('logs', 'incoming')}
+                    disabled={testLoading}
+                    className="flex items-center justify-center gap-2 bg-zinc-800 hover:bg-zinc-700 p-3 rounded-xl text-xs font-medium transition-all disabled:opacity-50"
+                  >
+                    <ArrowDownLeft className="w-4 h-4 text-blue-400" />
+                    الواردة | Incoming
+                  </button>
+                  <button 
+                    onClick={() => fetchTestData('logs', 'outgoing')}
+                    disabled={testLoading}
+                    className="flex items-center justify-center gap-2 bg-zinc-800 hover:bg-zinc-700 p-3 rounded-xl text-xs font-medium transition-all disabled:opacity-50"
+                  >
+                    <ArrowUpRight className="w-4 h-4 text-orange-400" />
+                    الصادرة | Outgoing
+                  </button>
+                </div>
+
+                {/* Test Results Display */}
+                <AnimatePresence mode="wait">
+                  {testLoading ? (
+                    <motion.div 
+                      key="loading"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="flex items-center justify-center py-12"
+                    >
+                      <RefreshCw className="w-6 h-6 animate-spin text-zinc-600" />
+                    </motion.div>
+                  ) : testResult ? (
+                    <motion.div
+                      key="result"
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="bg-black/40 rounded-2xl border border-zinc-800 overflow-hidden"
+                    >
+                      <div className="px-4 py-2 bg-zinc-800/50 border-bottom border-zinc-800 flex justify-between items-center">
+                        <span className="text-[10px] font-bold uppercase text-zinc-400">
+                          النتيجة | Result: {testResult.action}
+                        </span>
+                        <button onClick={() => setTestResult(null)} className="text-[10px] text-zinc-600 hover:text-zinc-400">مسح | Clear</button>
+                      </div>
+                      <div className="p-4" dir="ltr">
+                        <pre className="text-[11px] font-mono text-emerald-400/80 overflow-x-auto">
+                          {JSON.stringify(testResult.data, null, 2)}
+                        </pre>
+                      </div>
+                    </motion.div>
+                  ) : (
+                    <div className="text-center py-12 border-2 border-dashed border-zinc-800 rounded-2xl">
+                      <p className="text-xs text-zinc-600">اضغط على أداة أعلاه للتحقق من الاتصال</p>
+                    </div>
+                  )}
+                </AnimatePresence>
+              </section>
+            )}
+
+            <section>
+              <h3 className="text-sm font-mono uppercase tracking-widest text-zinc-500 mb-6 flex items-center gap-2">
+                <Database className="w-4 h-4" /> نقاط النهاية | API Endpoints
+              </h3>
+              <div className="space-y-3" dir="ltr">
+                {[
+                  { method: 'GET', path: '/api?resource=status', desc: 'Check API health' },
+                  { method: 'GET', path: '/api?resource=account', desc: 'Get linked account address' },
+                  { method: 'GET', path: '/api?resource=shamcash&action=balance', desc: 'Fetch real-time balance' },
+                  { method: 'GET', path: '/api?resource=shamcash&action=logs&type=incoming', desc: 'Retrieve incoming logs' },
+                  { method: 'GET', path: '/api?resource=shamcash&action=logs&type=outgoing', desc: 'Retrieve outgoing logs' },
+                ].map((endpoint, i) => (
+                  <div key={i} className="group bg-zinc-900/30 border border-zinc-800/50 rounded-2xl p-4 hover:border-emerald-500/30 transition-all">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-3">
+                        <span className="text-[10px] font-bold bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded uppercase">{endpoint.method}</span>
+                        <code className="text-xs font-mono text-zinc-300">{endpoint.path}</code>
+                      </div>
+                      <button 
+                        onClick={() => copyToClipboard(`${window.location.origin}${endpoint.path}`)}
+                        className="opacity-0 group-hover:opacity-100 text-[10px] text-zinc-500 hover:text-emerald-400 transition-all uppercase font-bold tracking-tighter"
+                      >
+                        Copy
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-zinc-500">{endpoint.desc}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <footer className="mt-24 pt-8 border-t border-zinc-900 flex flex-col md:flex-row items-center justify-between gap-6 text-zinc-500 text-xs">
+          <div className="flex items-center gap-4">
+            <span className="flex items-center gap-1.5">
+              <Activity className="w-3 h-3 text-emerald-500" />
+              الاستجابة: 42ms
+            </span>
+            <span className="flex items-center gap-1.5">
+              <Wallet className="w-3 h-3 text-blue-500" />
+              التوفر: 99.9%
+            </span>
+          </div>
+          <div className="flex flex-col items-end">
+            <p>تصميم وبرمجة: شركة Syriabit</p>
+            <p className="text-[10px] opacity-70">المطور: أحمد عتون | 0982559890</p>
+            <p>© 2026 ShamCash Bridge Protocol. All rights reserved.</p>
+          </div>
+        </footer>
+      </main>
+    </div>
+  );
+}
