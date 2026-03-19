@@ -140,15 +140,26 @@ async function startServer() {
 
   // 1. Generate QR
   app.get("/generate-qr", async (req, res) => {
-    // Generate components for the specific ShamCash format
-    const sessionPart1 = crypto.randomBytes(39).toString("base64"); // 52 chars
-    const sessionPart2 = crypto.randomBytes(12).toString("base64"); // 16 chars
-    // 52 + 1 (.) + 16 + 3 (#01) = 72 characters exactly
-    const sessionId = `${sessionPart1}.${sessionPart2}#01`; 
+    // Helper function to generate a realistic FCM Token
+    const generateFCMToken = () => {
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+      let prefix = '';
+      for (let i = 0; i < 22; i++) prefix += chars.charAt(Math.floor(Math.random() * 62)); // 62 to avoid -_ in prefix
+      let suffix = 'APA91b'; // Common FCM prefix
+      for (let i = 0; i < 134; i++) suffix += chars.charAt(Math.floor(Math.random() * chars.length));
+      return `${prefix}:${suffix}`;
+    };
 
-    const publicPart1 = crypto.randomBytes(42).toString("base64"); // 56 chars
+    // Generate components matching the "API SYRIA" pattern exactly
+    const sessionPart1 = crypto.randomBytes(38).toString("base64"); // 52 chars with padding (=)
+    const sessionPart2 = crypto.randomBytes(12).toString("base64"); // 16 chars
+    const fcmToken = generateFCMToken();
+    
+    // Combine with the FCM token
+    const sessionId = `${sessionPart1}.${sessionPart2}#${fcmToken}`; 
+
+    const publicPart1 = crypto.randomBytes(41).toString("base64"); // 56 chars with padding (==)
     const publicPart2 = crypto.randomBytes(12).toString("base64"); // 16 chars
-    // 56 + 1 (.) + 16 = 73 characters exactly
     const publicKey = `${publicPart1}.${publicPart2}`;
 
     sessions[sessionId] = {
@@ -161,9 +172,9 @@ async function startServer() {
       sessionId: sessionId,
       publicKey: publicKey,
       infoDevice: {
-        deviceName: "Chrome (Windows)",
-        os: "Windows 10",
-        browser: "Chrome/122.0.0.0"
+        deviceName: "API SYRIA",
+        os: "Windows",
+        browser: "Chrome"
       }
     });
 
