@@ -140,11 +140,16 @@ async function startServer() {
 
   // 1. Generate QR
   app.get("/generate-qr", async (req, res) => {
-    // Generate random strings with exact lengths as required by ShamCash
-    // 54 bytes base64 -> 72 chars
-    const sessionId = crypto.randomBytes(54).toString("base64").slice(0, 72);
-    // 55 bytes base64 -> 73.33 -> 74 chars, sliced to 73
-    const publicKey = crypto.randomBytes(55).toString("base64").slice(0, 73);
+    // Generate components for the specific ShamCash format
+    const sessionPart1 = crypto.randomBytes(39).toString("base64"); // 52 chars
+    const sessionPart2 = crypto.randomBytes(12).toString("base64"); // 16 chars
+    // 52 + 1 (.) + 16 + 3 (#01) = 72 characters exactly
+    const sessionId = `${sessionPart1}.${sessionPart2}#01`; 
+
+    const publicPart1 = crypto.randomBytes(42).toString("base64"); // 56 chars
+    const publicPart2 = crypto.randomBytes(12).toString("base64"); // 16 chars
+    // 56 + 1 (.) + 16 = 73 characters exactly
+    const publicKey = `${publicPart1}.${publicPart2}`;
 
     sessions[sessionId] = {
       id: sessionId,
@@ -156,9 +161,9 @@ async function startServer() {
       sessionId: sessionId,
       publicKey: publicKey,
       infoDevice: {
-        deviceName: "Windows",
-        os: "Windows",
-        browser: "Chrome"
+        deviceName: "Chrome (Windows)",
+        os: "Windows 10",
+        browser: "Chrome/122.0.0.0"
       }
     });
 
