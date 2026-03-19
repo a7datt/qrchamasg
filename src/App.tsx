@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { QrCode, CheckCircle2, Loader2, ShieldCheck, Database, Activity, Wallet, ArrowDownLeft, ArrowUpRight, RefreshCw, Copy } from 'lucide-react';
+import { QrCode, CheckCircle2, Loader2, ShieldCheck, Database, Activity, Wallet, ArrowDownLeft, ArrowUpRight, RefreshCw, Copy, Code } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 export default function App() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [qrCode, setQrCode] = useState<string | null>(null);
-  const [status, setStatus] = useState<'idle' | 'waiting' | 'linked'>('idle');
+  const [status, setStatus] = useState<'idle' | 'bookmarklet' | 'waiting' | 'linked'>('idle');
   const [accountAddress, setAccountAddress] = useState<string | null>(null);
   const [apiKey, setApiKey] = useState<string | null>(localStorage.getItem('sham_api_key'));
   const [loading, setLoading] = useState(false);
@@ -14,6 +14,8 @@ export default function App() {
   // Test Data States
   const [testResult, setTestResult] = useState<any>(null);
   const [testLoading, setTestLoading] = useState(false);
+
+  const bookmarkletCode = `javascript:(function(){if(window.qrHunterActive){alert("الصائد مفعل مسبقاً! قم بتحديث الباركود في الصفحة.");return}window.qrHunterActive=true;function sendToApp(sId,pKey){fetch("${window.location.origin}/inject-qr",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:sId,publicKey:pKey||"none"})}).then(()=>alert("✅ تم إرسال الباركود لتطبيقنا بنجاح!\\nارجع للتطبيق الآن.")).catch(e=>alert("❌ فشل الإرسال للتطبيق: "+e.message))}function checkData(data){if(!data)return;let sId=data.sessionId||data.session_id||(data.data&&data.data.sessionId);let pKey=data.publicKey||data.public_key||(data.data&&data.data.publicKey);if(sId){sendToApp(sId,pKey)}}const origFetch=window.fetch;window.fetch=async function(...args){const res=await origFetch.apply(this,args);const clone=res.clone();clone.json().then(checkData).catch(()=>{});return res};const origOpen=XMLHttpRequest.prototype.open;const origSend=XMLHttpRequest.prototype.send;XMLHttpRequest.prototype.open=function(method,url){this._url=url;origOpen.apply(this,arguments)};XMLHttpRequest.prototype.send=function(){this.addEventListener('load',function(){try{checkData(JSON.parse(this.responseText))}catch(e){}});origSend.apply(this,arguments)};alert("🕵️‍♂️ تم تفعيل صائد الباركود!\\n\\nالخطوة التالية: اضغط على زر (تحديث الباركود) في موقع شام كاش، أو انتظر ثواني حتى يتحدث الباركود تلقائياً ليتم التقاطه.");})();`;
 
   const generateQR = async () => {
     setLoading(true);
@@ -31,6 +33,27 @@ export default function App() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    let interval: any;
+    if (status === 'bookmarklet') {
+      interval = setInterval(async () => {
+        try {
+          const res = await fetch('/latest-qr');
+          const data = await res.json();
+          if (data.success && data.data) {
+            setSessionId(data.data.sessionId);
+            setQrCode(data.data.qrImage);
+            setStatus('waiting');
+            clearInterval(interval);
+          }
+        } catch (err) {
+          console.error('Polling latest QR error', err);
+        }
+      }, 2000);
+    }
+    return () => clearInterval(interval);
+  }, [status]);
 
   useEffect(() => {
     let interval: any;
@@ -148,20 +171,83 @@ export default function App() {
               <div className="aspect-square bg-zinc-950 rounded-2xl border border-zinc-800 flex flex-col items-center justify-center relative overflow-hidden group">
                 <AnimatePresence mode="wait">
                   {status === 'idle' && (
-                    <motion.button
+                    <motion.div
                       key="idle"
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       exit={{ opacity: 0 }}
-                      onClick={generateQR}
-                      disabled={loading}
-                      className="flex flex-col items-center gap-4 group"
+                      className="flex flex-col items-center gap-6 w-full p-4"
                     >
-                      <div className="w-14 h-14 bg-zinc-900 rounded-2xl flex items-center justify-center group-hover:bg-emerald-500/10 group-hover:text-emerald-400 transition-all duration-300">
-                        {loading ? <Loader2 className="w-7 h-7 animate-spin" /> : <QrCode className="w-7 h-7" />}
+                      <button
+                        onClick={generateQR}
+                        disabled={loading}
+                        className="flex flex-col items-center gap-4 group"
+                      >
+                        <div className="w-14 h-14 bg-zinc-900 rounded-2xl flex items-center justify-center group-hover:bg-emerald-500/10 group-hover:text-emerald-400 transition-all duration-300">
+                          {loading ? <Loader2 className="w-7 h-7 animate-spin" /> : <QrCode className="w-7 h-7" />}
+                        </div>
+                        <span className="text-xs font-medium text-zinc-400 group-hover:text-zinc-200">توليد الرمز | Generate QR</span>
+                      </button>
+
+                      <div className="w-full h-px bg-zinc-800" />
+
+                      <button
+                        onClick={() => setStatus('bookmarklet')}
+                        className="flex flex-col items-center gap-3 group"
+                      >
+                        <div className="w-10 h-10 bg-zinc-900 rounded-xl flex items-center justify-center group-hover:bg-blue-500/10 group-hover:text-blue-400 transition-all duration-300">
+                          <Code className="w-5 h-5" />
+                        </div>
+                        <span className="text-[10px] font-medium text-zinc-500 group-hover:text-zinc-300 text-center">
+                          تجاوز الحظر (الكود السحري)
+                          <br/>
+                          Bypass Firewall
+                        </span>
+                      </button>
+                    </motion.div>
+                  )}
+
+                  {status === 'bookmarklet' && (
+                    <motion.div
+                      key="bookmarklet"
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      className="flex flex-col items-center gap-4 w-full p-4 text-center"
+                    >
+                      <div className="w-12 h-12 bg-blue-500/10 text-blue-400 rounded-2xl flex items-center justify-center mb-2">
+                        <Code className="w-6 h-6" />
                       </div>
-                      <span className="text-xs font-medium text-zinc-400 group-hover:text-zinc-200">توليد الرمز | Generate QR</span>
-                    </motion.button>
+                      <h3 className="text-sm font-bold text-zinc-200">الكود السحري (صائد الباركود)</h3>
+                      <p className="text-[10px] text-zinc-400 leading-relaxed">
+                        1. افتح موقع <a href="https://shamcash.sy" target="_blank" rel="noreferrer" className="text-blue-400 underline">shamcash.sy</a> في متصفحك.<br/>
+                        2. انسخ الكود بالأسفل والصقه في شريط الروابط هناك واضغط Enter.<br/>
+                        3. <strong>اضغط على زر (تحديث الباركود)</strong> في موقع شام كاش، أو انتظر حتى يتحدث تلقائياً.<br/>
+                        4. سيعود الباركود إلى هنا تلقائياً!
+                      </p>
+                      
+                      <div className="w-full relative group mt-2">
+                        <div className="absolute inset-0 bg-blue-500/20 blur-md rounded-xl opacity-0 group-hover:opacity-100 transition-opacity" />
+                        <button 
+                          onClick={() => copyToClipboard(bookmarkletCode)}
+                          className="relative w-full bg-zinc-900 border border-zinc-800 hover:border-blue-500/50 text-zinc-300 p-3 rounded-xl text-xs flex items-center justify-between transition-all"
+                        >
+                          <span className="truncate max-w-[180px] font-mono text-[10px] text-zinc-500">javascript:(async()=&gt;...</span>
+                          {copied ? <CheckCircle2 className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4 text-blue-400" />}
+                        </button>
+                      </div>
+
+                      <div className="flex items-center gap-2 text-blue-400 text-[10px] font-bold uppercase tracking-widest mt-4">
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        بانتظار الكود | Waiting...
+                      </div>
+
+                      <button 
+                        onClick={() => setStatus('idle')}
+                        className="mt-2 text-[10px] text-zinc-600 hover:text-zinc-400 underline"
+                      >
+                        إلغاء | Cancel
+                      </button>
+                    </motion.div>
                   )}
 
                   {status === 'waiting' && qrCode && (
