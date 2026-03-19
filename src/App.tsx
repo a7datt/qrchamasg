@@ -171,8 +171,8 @@ export default function App() {
                       animate={{ opacity: 1, scale: 1 }}
                       className="flex flex-col items-center gap-4 w-full p-4"
                     >
-                      <div className="bg-white p-3 rounded-2xl shadow-2xl">
-                        <img src={qrCode} alt="QR Code" className="w-64 h-64" />
+                      <div className="bg-white p-6 rounded-3xl shadow-2xl">
+                        <img src={qrCode} alt="QR Code" className="w-64 h-64 object-contain" />
                       </div>
                       <div className="flex items-center gap-2 text-emerald-400 text-[10px] font-bold uppercase tracking-widest">
                         <Loader2 className="w-3 h-3 animate-spin" />

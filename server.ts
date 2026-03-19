@@ -223,7 +223,7 @@ async function startServer() {
       try {
         const qrImage = await QRCode.toDataURL(qrData, {
           errorCorrectionLevel: 'H',
-          margin: 1,
+          margin: 4, // Increased margin to make the white box larger
           width: 512,
           color: {
             dark: '#000000',
